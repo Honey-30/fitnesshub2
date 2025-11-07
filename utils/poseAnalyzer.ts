@@ -822,6 +822,7 @@ const analyzeSquat = (landmarks: Landmark[], currentStage: string, repCount: num
         // BEGINNER-FRIENDLY: Count ALL reps, give feedback on quality separately
         if (physics.velocity > 0.03) { // More sensitive to movement
             repCounted = true; // Count the rep no matter what!
+            console.log('🎯 REP COUNTED! Form Score:', formScore, '| Rep #', repCount + 1);
             
             // NOW provide quality-based feedback (not blocking the count)
             const encouragement = feedbackManager.getEncouragementMessage(repCount + 1);
@@ -1026,6 +1027,7 @@ const analyzePushup = (landmarks: Landmark[], currentStage: string, repCount: nu
         // Rep completed - ALWAYS count it!
         if (physics.velocity > 0.03) { // More sensitive
             repCounted = true; // Count every rep!
+            console.log('💪 PUSHUP COUNTED! Form Score:', formScore, '| Rep #', repCount + 1);
             
             // Quality-based feedback (not blocking)
             const encouragement = feedbackManager.getEncouragementMessage(repCount + 1);
@@ -1222,6 +1224,7 @@ const analyzeLunge = (landmarks: Landmark[], currentStage: string, repCount: num
     } else if (stage === 'up' && (currentStage === 'left_down' || currentStage === 'right_down')) {
         // Rep completed - ALWAYS count it!
         repCounted = true;
+        console.log('🦵 LUNGE COUNTED! Form Score:', formScore, '| Rep #', repCount + 1);
         
         // Quality feedback (not blocking)
         const encouragement = feedbackManager.getEncouragementMessage(repCount + 1);
