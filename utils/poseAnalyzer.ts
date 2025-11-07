@@ -8,6 +8,10 @@ type Landmark = NormalizedLandmark;
 let formScoreHistory: number[] = [];
 let mistakePattern: Map<string, number[]> = new Map(); // Track when mistakes occur
 
+// Prevent double counting - track last rep timestamp
+let lastRepTimestamp: number = 0;
+const REP_COOLDOWN_MS = 500; // Minimum 500ms between reps
+
 // Advanced ML-based performance tracking
 interface UserPerformanceProfile {
     baselineRangeOfMotion: Map<string, number>; // Exercise -> ROM
@@ -719,38 +723,38 @@ const analyzeSquat = (landmarks: Landmark[], currentStage: string, repCount: num
         const kneeStability = calculateStability(leftKnee, 25); // Left knee index
 
         if (torsoShinAngleDiff > 50) {
-            mistake = "Chest Falling"; formScore -= 8; // SUPER beginner-friendly
-            biomechanicalRisk = 'medium'; // Lowered from high
+            mistake = "Chest Falling"; formScore -= 8;
+            biomechanicalRisk = 'medium';
             shouldSpeak = true;
             feedback = createEnhancedFeedback(
-                'Chest Up! 📐',
-                'Try to keep your chest up a bit more. You\'re doing great!',
-                'adjustment', // Changed from critical
+                'Keep That Chest Up! �',
+                'Great effort! Just lift your chest a bit more and you\'ll have perfect form!',
+                'adjustment',
                 [11, 12, 23, 24],
                 0.9,
                 biomechanicalRisk,
-                'low' // Changed from immediate
+                'low'
             );
         } else if (leftKneeValgus || rightKneeValgus) { 
-            mistake = "Knee Valgus"; formScore -= 6; // SUPER beginner-friendly
-            biomechanicalRisk = 'medium'; // Lowered from high
+            mistake = "Knee Valgus"; formScore -= 6;
+            biomechanicalRisk = 'medium';
             shouldSpeak = true;
             feedback = createEnhancedFeedback(
-                'Knees Out! ⚠️',
-                'Try pushing your knees out slightly. Good effort!',
-                'adjustment', // Changed from critical
+                'Push Knees Out! 🎯',
+                'Nice work! Just push your knees outward a bit and you\'re golden!',
+                'adjustment',
                 [25, 26],
                 0.85,
                 biomechanicalRisk,
-                'low' // Changed from immediate
+                'low'
             );
         } else if (kneeStability < 60) {
-            mistake = "Unstable Knees"; formScore -= 4; // SUPER beginner-friendly
-            biomechanicalRisk = 'low'; // Lowered from medium
+            mistake = "Unstable Knees"; formScore -= 4;
+            biomechanicalRisk = 'low';
             shouldSpeak = true;
             feedback = createEnhancedFeedback(
-                'Stabilize 🎯',
-                'Little wobble there! Take your time and control the movement.',
+                'Almost There! 🎯',
+                'Great job! Just stabilize those knees a bit more - you\'ve got this!',
                 'adjustment',
                 [25, 26],
                 0.75,
@@ -758,11 +762,11 @@ const analyzeSquat = (landmarks: Landmark[], currentStage: string, repCount: num
                 'low' // Changed from high
             );
         } else if (leftHip.y > leftKnee.y + 0.03 && rightHip.y > rightKnee.y + 0.03) {
-            mistake = "Not Deep Enough"; formScore -= 3; // SUPER beginner-friendly
-            shouldSpeak = false; // Don't spam this feedback
+            mistake = "Not Deep Enough"; formScore -= 3;
+            shouldSpeak = false;
             feedback = createEnhancedFeedback(
-                'Go Deeper 📏',
-                'Great control! Try going a bit deeper - your hips should reach knee level for full range of motion.',
+                'You Can Go Deeper! �',
+                'Awesome control! Try going a bit deeper next time - you\'re doing amazing!',
                 'adjustment',
                 [23, 24],
                 0.8,
@@ -772,8 +776,8 @@ const analyzeSquat = (landmarks: Landmark[], currentStage: string, repCount: num
         } else {
             shouldSpeak = false;
             feedback = createEnhancedFeedback(
-                'Perfect! 💪',
-                'Excellent form! Your technique is spot-on!',
+                'Perfect Form! 🌟',
+                'Incredible! Your technique is absolutely spot-on! Keep it up!',
                 'positive',
                 [],
                 0.95,
@@ -833,32 +837,35 @@ const analyzeSquat = (landmarks: Landmark[], currentStage: string, repCount: num
     // Detect coming back up - transition from down to up
     else if (currentStage === 'down' && (avgKneeAngle >= 150 || avgHipAngle >= 155)) {
         if (physics.velocity > 0.005) {
-            stage = 'up';
-            repCounted = true;
-            console.log('🎯 REP COUNTED! Form Score:', formScore, '| Rep #', repCount + 1);
-            console.log('🎯 REP COUNTED! Form Score:', formScore, '| Rep #', repCount + 1);
-            
-            // NOW provide quality-based feedback (not blocking the count)
-            const encouragement = feedbackManager.getEncouragementMessage(repCount + 1);
-            
-            // Dynamic feedback based on actual form, but always encouraging
-            let repMessage = '';
-            let feedbackType: 'positive' | 'adjustment' | 'info' = 'positive';
+            // Prevent double counting with cooldown
+            const now = Date.now();
+            if (now - lastRepTimestamp >= REP_COOLDOWN_MS) {
+                stage = 'up';
+                repCounted = true;
+                lastRepTimestamp = now;
+                console.log('🎯 REP COUNTED! Form Score:', formScore, '| Rep #', repCount + 1, '| Cooldown OK');
+                
+                // NOW provide quality-based feedback (not blocking the count)
+                const encouragement = feedbackManager.getEncouragementMessage(repCount + 1);
+                
+                // Dynamic feedback based on actual form, but always encouraging
+                let repMessage = '';
+                let feedbackType: 'positive' | 'adjustment' | 'info' = 'positive';
             
             // SUPER BEGINNER-FRIENDLY thresholds (was 85/70/45)
             if (formScore >= 75) {
-                repMessage = `${encouragement} Outstanding rep! Form score: ${formScore}%. You're crushing it! 💪`;
+                repMessage = `${encouragement} AMAZING rep! ${formScore}% form - you're absolutely crushing it! ��💪`;
                 shouldSpeak = true;
             } else if (formScore >= 60) {
-                repMessage = `${encouragement} Good rep! ${formScore}% form. ${mistake ? `Small tip: work on ${mistake.toLowerCase()}.` : 'Solid work!'}`;
+                repMessage = `${encouragement} Great rep! ${formScore}% form. ${mistake ? `Pro tip: ${mistake.toLowerCase()}.` : 'You\'re doing fantastic!'}`;
                 shouldSpeak = repCount % 3 === 0;
             } else if (formScore >= 47) {
-                repMessage = `Rep ${repCount + 1} counted. Form at ${formScore}%. ${mistake ? `Focus on: ${mistake}. ` : ''}You're building strength - form will improve!`;
-                feedbackType = 'adjustment';
+                repMessage = `Nice! Rep ${repCount + 1} counted at ${formScore}%. ${mistake ? `Work on ${mistake} - ` : ''}You're getting stronger with every rep! 💪`;
+                feedbackType = 'positive';
                 shouldSpeak = repCount % 5 === 0;
             } else {
-                repMessage = `Rep ${repCount + 1}. ${mistake ? `Watch ${mistake.toLowerCase()} - ` : ''}Quality is ${formScore}%. Slow down and focus on control. Progress takes time! 🎯`;
-                feedbackType = 'adjustment';
+                repMessage = `Rep ${repCount + 1} done! ${formScore}%. ${mistake ? `${mistake} needs work - ` : ''}Keep going, you're making progress! 🎯`;
+                feedbackType = 'positive';
                 shouldSpeak = repCount === 0 || repCount % 5 === 0;
             }
             
@@ -871,6 +878,7 @@ const analyzeSquat = (landmarks: Landmark[], currentStage: string, repCount: num
                 formScore >= 60 ? 'low' : 'medium', // Lowered from 75
                 'medium'
             );
+            } // Close cooldown check
         }
     }
     
@@ -963,30 +971,30 @@ const analyzePushup = (landmarks: Landmark[], currentStage: string, repCount: nu
     const elbowFlare = Math.abs(leftElbow.x - leftShoulder.x) + Math.abs(rightElbow.x - rightShoulder.x);
     if (elbowFlare > 0.3) {
         mistake = "Elbows Flaring";
-        formScore -= 6; // SUPER beginner-friendly (was 20)
-        biomechanicalRisk = 'low'; // Lowered from medium
+        formScore -= 6;
+        biomechanicalRisk = 'low';
         shouldSpeak = true;
         feedback = createEnhancedFeedback(
-            'Tuck Elbows 💪',
-            'Try keeping your elbows a bit closer. You\'re doing great!',
+            'Tuck Those Elbows! 💪',
+            'Nice work! Just bring your elbows in a bit closer and you\'ll be perfect!',
             'adjustment',
             [13, 14],
             0.8,
             biomechanicalRisk,
-            'low' // Changed from high
+            'low'
         );
     }
 
     if (avgElbowAngle > 160) stage = 'up';
 
     if (avgBodyAngle < 160) {
-        mistake = "Hip Sag"; formScore -= 10; // SUPER beginner-friendly (was 50!)
-        biomechanicalRisk = 'medium'; // Lowered from high
+        mistake = "Hip Sag"; formScore -= 10;
+        biomechanicalRisk = 'medium';
         shouldSpeak = true;
         feedback = createEnhancedFeedback(
-            'Engage Core! 🔥',
-            'Try to keep your body a bit straighter. Engage your core!',
-            'adjustment', // Changed from critical
+            'Engage That Core! 🔥',
+            'Great effort! Tighten your core and keep your body straight - you\'ve got this!',
+            'adjustment',
             [23, 24],
             0.9,
             biomechanicalRisk,
@@ -996,8 +1004,8 @@ const analyzePushup = (landmarks: Landmark[], currentStage: string, repCount: nu
         if (avgElbowAngle < 90) {
              shouldSpeak = false;
              feedback = createEnhancedFeedback(
-                'Perfect Depth! 🎯',
-                'Excellent depth on that pushup!',
+                'Perfect Depth! �',
+                'WOW! That\'s excellent depth - your form is incredible!',
                 'positive',
                 [],
                 0.95,
@@ -1006,10 +1014,10 @@ const analyzePushup = (landmarks: Landmark[], currentStage: string, repCount: nu
             );
         } else {
             if (mistake !== "Elbows Flaring" && mistake !== "Hip Sag") {
-                mistake = "Not Deep Enough"; formScore -= 5; // SUPER beginner-friendly (was 25)
+                mistake = "Not Deep Enough"; formScore -= 5;
                 shouldSpeak = false;
                 feedback = createEnhancedFeedback(
-                    'Lower More 📏',
+                    'Go Lower! �',
                     'Good effort! Try going a bit lower next time.',
                     'adjustment',
                     [11, 12],
@@ -1048,41 +1056,46 @@ const analyzePushup = (landmarks: Landmark[], currentStage: string, repCount: nu
     // Detect coming back up
     else if (currentStage === 'down' && avgElbowAngle >= 160) {
         if (physics.velocity > 0.005) {
-            stage = 'up';
-            repCounted = true;
-            console.log('💪 PUSHUP COUNTED! Form Score:', formScore, '| Rep #', repCount + 1);
-            
-            // Quality-based feedback (not blocking)
-            const encouragement = feedbackManager.getEncouragementMessage(repCount + 1);
-            let repMessage = '';
-            let feedbackType: 'positive' | 'adjustment' | 'info' = 'positive';
-            
-            // SUPER BEGINNER-FRIENDLY thresholds (was 85/70/45)
-            if (formScore >= 75) {
-                repMessage = `${encouragement} Killer rep! ${formScore}% form. Your technique is excellent! 🔥`;
-                shouldSpeak = true;
-            } else if (formScore >= 60) {
-                repMessage = `${encouragement} Solid pushup at ${formScore}%. ${mistake ? `Tip: ${mistake.toLowerCase()}.` : 'Nice work!'}`;
-                shouldSpeak = repCount % 3 === 0;
-            } else if (formScore >= 47) {
-                repMessage = `Rep ${repCount + 1} done. ${formScore}% form. ${mistake ? `Work on: ${mistake}. ` : ''}Keep going - you're building strength!`;
-                feedbackType = 'adjustment';
-                shouldSpeak = repCount % 5 === 0;
-            } else {
-                repMessage = `Rep ${repCount + 1}. ${mistake ? `${mistake} detected - ` : ''}${formScore}% quality. Focus on control. Every rep makes you stronger! 💪`;
-                feedbackType = 'adjustment';
+            // Prevent double counting with cooldown
+            const now = Date.now();
+            if (now - lastRepTimestamp >= REP_COOLDOWN_MS) {
+                stage = 'up';
+                repCounted = true;
+                lastRepTimestamp = now;
+                console.log('💪 PUSHUP COUNTED! Form Score:', formScore, '| Rep #', repCount + 1, '| Cooldown OK');
+                
+                // Quality-based feedback (not blocking)
+                const encouragement = feedbackManager.getEncouragementMessage(repCount + 1);
+                let repMessage = '';
+                let feedbackType: 'positive' | 'adjustment' | 'info' = 'positive';
+                
+                // SUPER BEGINNER-FRIENDLY thresholds (was 85/70/45)
+                if (formScore >= 75) {
+                    repMessage = `${encouragement} INCREDIBLE pushup! ${formScore}% form - you're on fire! 🔥💪`;
+                    shouldSpeak = true;
+                } else if (formScore >= 60) {
+                    repMessage = `${encouragement} Awesome pushup! ${formScore}%. ${mistake ? `Pro tip: ${mistake.toLowerCase()}.` : 'You\'re crushing it!'}`;
+                    shouldSpeak = repCount % 3 === 0;
+                } else if (formScore >= 47) {
+                    repMessage = `Yes! Rep ${repCount + 1} at ${formScore}%. ${mistake ? `Work on ${mistake} - ` : ''}You're getting stronger every rep! 💪`;
+                    feedbackType = 'positive';
+                    shouldSpeak = repCount % 5 === 0;
+                } else {
+                    repMessage = `Rep ${repCount + 1} complete! ${formScore}%. ${mistake ? `${mistake} needs focus - ` : ''}Every rep counts, keep pushing! 🎯`;
+                    feedbackType = 'positive';
                 shouldSpeak = repCount === 0 || repCount % 5 === 0;
             }
             
-            feedback = createEnhancedFeedback(
-                `Rep ${repCount + 1} ✓`,
-                repMessage,
-                feedbackType,
-                [],
-                0.95,
-                formScore >= 60 ? 'low' : 'medium', // Lowered from 75
-                'medium'
-            );
+                feedback = createEnhancedFeedback(
+                    `Rep ${repCount + 1} ✓`,
+                    repMessage,
+                    feedbackType,
+                    [],
+                    0.95,
+                    formScore >= 60 ? 'low' : 'medium', // Lowered from 75
+                    'medium'
+                );
+            } // Close cooldown check
         }
     }
     
@@ -1179,39 +1192,39 @@ const analyzeLunge = (landmarks: Landmark[], currentStage: string, repCount: num
         stage = 'up';
     } else {
         if (frontKnee.x < frontAnkle.x) {
-            mistake = "Knee Over Toes"; formScore -= 7; // SUPER beginner-friendly (was 40!)
-            biomechanicalRisk = 'medium'; // Lowered from high
+            mistake = "Knee Over Toes"; formScore -= 7;
+            biomechanicalRisk = 'medium';
             shouldSpeak = true;
             feedback = createEnhancedFeedback(
-                'Knee Back! ⚠️',
-                'Try shifting your weight back a bit. You\'re doing well!',
-                'adjustment', // Changed from critical
+                'Shift Back! 💪',
+                'Great lunge! Just shift your weight back slightly - you\'re almost perfect!',
+                'adjustment',
                 [isLeftLegForward ? 25 : 26],
                 0.9,
                 biomechanicalRisk,
-                'low' // Changed from immediate
+                'low'
             );
         } else if (frontKneeAngle < 80 || frontKneeAngle > 100) {
-            mistake = "Incorrect Depth"; formScore -= 5; // SUPER beginner-friendly (was 30)
-            biomechanicalRisk = 'low'; // Lowered from medium
+            mistake = "Incorrect Depth"; formScore -= 5;
+            biomechanicalRisk = 'low';
             shouldSpeak = true;
             feedback = createEnhancedFeedback(
-                'Check Depth 📐',
-                'Try to aim for a 90-degree angle. Great effort!',
+                'Perfect Angle! 📐',
+                'Nice lunge! Aim for 90 degrees and you\'ll be spot on!',
                 'adjustment',
                 [isLeftLegForward ? 25 : 26],
                 0.75,
                 biomechanicalRisk,
-                'low' // Changed from high
+                'low'
             );
         } else if (biomechanics.balanceScore < 60) {
             mistake = "Poor Balance";
-            formScore -= 4; // SUPER beginner-friendly (was 20)
-            biomechanicalRisk = 'low'; // Lowered from medium
+            formScore -= 4;
+            biomechanicalRisk = 'low';
             shouldSpeak = true;
             feedback = createEnhancedFeedback(
-                'Balance 🎯',
-                'Keep working on your balance. Engage your core!',
+                'Stay Balanced! 🎯',
+                'Excellent effort! Keep that core tight and you\'ll nail the balance!',
                 'adjustment',
                 [23, 24],
                 0.7,
@@ -1258,29 +1271,33 @@ const analyzeLunge = (landmarks: Landmark[], currentStage: string, repCount: num
     } 
     else if ((currentStage === 'left_down' || currentStage === 'right_down') && frontKneeAngle >= 160) {
         if (physics.velocity > 0.005) {
-            stage = 'up';
-            repCounted = true;
-            console.log('🦵 LUNGE COUNTED! Form Score:', formScore, '| Rep #', repCount + 1);
-            
-            // Quality feedback (not blocking)
-            const encouragement = feedbackManager.getEncouragementMessage(repCount + 1);
-            let repMessage = '';
+            // Prevent double counting with cooldown
+            const now = Date.now();
+            if (now - lastRepTimestamp >= REP_COOLDOWN_MS) {
+                stage = 'up';
+                repCounted = true;
+                lastRepTimestamp = now;
+                console.log('🦵 LUNGE COUNTED! Form Score:', formScore, '| Rep #', repCount + 1, '| Cooldown OK');
+                
+                // Quality feedback (not blocking)
+                const encouragement = feedbackManager.getEncouragementMessage(repCount + 1);
+                let repMessage = '';
             let feedbackType: 'positive' | 'adjustment' | 'info' = 'positive';
             
             // SUPER BEGINNER-FRIENDLY thresholds (was 85/70/45)
             if (formScore >= 75) {
-                repMessage = `${encouragement} Perfect lunge! ${formScore}% form. Excellent balance and control! 🎯`;
+                repMessage = `${encouragement} PERFECT lunge! ${formScore}% - incredible balance and control! �💪`;
                 shouldSpeak = true;
             } else if (formScore >= 60) {
-                repMessage = `${encouragement} Good lunge! ${formScore}% form. ${mistake ? `Note: ${mistake.toLowerCase()}.` : 'Great work!'}`;
+                repMessage = `${encouragement} Fantastic lunge! ${formScore}%. ${mistake ? `Pro tip: ${mistake.toLowerCase()}.` : 'You\'re amazing!'}`;
                 shouldSpeak = repCount % 3 === 0;
             } else if (formScore >= 47) {
-                repMessage = `Rep ${repCount + 1} complete. ${formScore}% form. ${mistake ? `Focus: ${mistake}. ` : ''}You're progressing!`;
-                feedbackType = 'adjustment';
+                repMessage = `Great! Rep ${repCount + 1} at ${formScore}%. ${mistake ? `Work on ${mistake} - ` : ''}You're getting better! 💪`;
+                feedbackType = 'positive';
                 shouldSpeak = repCount % 5 === 0;
             } else {
-                repMessage = `Rep ${repCount + 1}. ${mistake ? `${mistake} - ` : ''}${formScore}% quality. Take it slow and focus on stability. You've got this! 💪`;
-                feedbackType = 'adjustment';
+                repMessage = `Rep ${repCount + 1} done! ${formScore}%. ${mistake ? `${mistake} - ` : ''}Stay focused, you're making progress! 🎯`;
+                feedbackType = 'positive';
                 shouldSpeak = repCount === 0 || repCount % 5 === 0;
             }
             
@@ -1293,6 +1310,7 @@ const analyzeLunge = (landmarks: Landmark[], currentStage: string, repCount: num
                 formScore >= 60 ? 'low' : 'medium', // Lowered from 75
                 'medium'
             );
+            } // Close cooldown check
         }
     }
     
