@@ -29,9 +29,9 @@ export class RepCounter {
     private invalidReps: number = 0;
     private repHistory: RepQuality[] = [];
     private lastRepTime: number = 0;
-    private minRepDuration: number = 400; // Minimum 400ms per rep (prevents false counting)
-    private maxRepDuration: number = 10000; // Maximum 10s per rep (timeout)
-    private transitionFrames: number = 3; // Require 3 consecutive frames to confirm transition
+    private minRepDuration: number = 300; // Reduced from 400ms - allow faster reps
+    private maxRepDuration: number = 15000; // Increased from 10s - allow slower beginner reps
+    private transitionFrames: number = 2; // Reduced from 3 - faster response
     private hysteresisMargin: number = 5; // Degrees of hysteresis to prevent bouncing
     
     // Thresholds with hysteresis
@@ -51,18 +51,19 @@ export class RepCounter {
         };
 
         // Define thresholds with hysteresis for each exercise
+        // Made more forgiving for beginners - partial range of motion counts!
         this.thresholds = {
             squats: {
-                down: { enter: 100, exit: 110 }, // Enter down below 100°, exit above 110°
-                up: { enter: 160, exit: 150 },   // Enter up above 160°, exit below 150°
+                down: { enter: 120, exit: 130 }, // Easier - even quarter squats count
+                up: { enter: 150, exit: 140 },   // Lowered from 160
             },
             pushups: {
-                down: { enter: 90, exit: 100 },
-                up: { enter: 160, exit: 150 },
+                down: { enter: 110, exit: 120 }, // More forgiving - partial pushups count
+                up: { enter: 150, exit: 140 },
             },
             lunges: {
-                down: { enter: 100, exit: 110 },
-                up: { enter: 160, exit: 150 },
+                down: { enter: 120, exit: 130 }, // Easier for beginners
+                up: { enter: 150, exit: 140 },
             },
             plank: {
                 down: { enter: 0, exit: 0 },
@@ -144,16 +145,20 @@ export class RepCounter {
                             landmarks
                         );
 
-                        // Count rep if quality is sufficient
-                        if (quality.overallScore > 70) {
-                            this.repCount++;
+                        // Count ALL reps regardless of quality - user is trying!
+                        // Even beginners with low scores deserve rep counts
+                        this.repCount++;
+                        
+                        // Track quality separately for statistics
+                        if (quality.overallScore > 45) {
                             this.validReps++;
-                            counted = true;
-                            this.repHistory.push(quality);
-                            this.lastRepTime = now;
                         } else {
                             this.invalidReps++;
                         }
+                        
+                        counted = true;
+                        this.repHistory.push(quality);
+                        this.lastRepTime = now;
                     }
 
                     this.state.phase = 'up';

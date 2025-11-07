@@ -801,9 +801,10 @@ const analyzeSquat = (landmarks: Landmark[], currentStage: string, repCount: num
     }
 
     // Detect squat bottom position - requires BOTH angle and movement
-    if (avgHipAngle < 100 && avgKneeAngle < 100 && currentStage === 'up') {
+    if (avgHipAngle < 120 && avgKneeAngle < 130 && currentStage === 'up') {
+        // Lowered threshold from 100 to allow partial squats to count
         // Only transition if there was actual downward movement
-        if (physics.velocity > 0.1) {
+        if (physics.velocity > 0.05) { // Made more sensitive
             stage = 'down'; 
             shouldSpeak = false;
             feedback = createEnhancedFeedback(
@@ -817,55 +818,43 @@ const analyzeSquat = (landmarks: Landmark[], currentStage: string, repCount: num
             );
         }
     } else if (stage === 'up' && currentStage === 'down') {
-        // Rep completed - requires coming back up with movement
-        // FIXED: Count rep if form is above 50%
-        if (physics.velocity > 0.05) {
-            if (formScore >= 50) { 
-                repCounted = true;
+        // Rep completed - coming back up
+        // BEGINNER-FRIENDLY: Count ALL reps, give feedback on quality separately
+        if (physics.velocity > 0.03) { // More sensitive to movement
+            repCounted = true; // Count the rep no matter what!
+            
+            // NOW provide quality-based feedback (not blocking the count)
+            const encouragement = feedbackManager.getEncouragementMessage(repCount + 1);
+            
+            // Dynamic feedback based on actual form, but always encouraging
+            let repMessage = '';
+            let feedbackType: 'positive' | 'adjustment' | 'info' = 'positive';
+            
+            if (formScore >= 85) {
+                repMessage = `${encouragement} Outstanding rep! Form score: ${formScore}%. You're crushing it! 💪`;
                 shouldSpeak = true;
-                const encouragement = feedbackManager.getEncouragementMessage(repCount + 1);
-                
-                // Provide detailed feedback based on form quality
-                let repQuality = 'Perfect';
-                let detailMessage = encouragement;
-                
-                if (formScore >= 90) {
-                    repQuality = '⭐ Excellent';
-                    detailMessage = `${encouragement} Your form is outstanding - ${formScore}% quality! Keep maintaining this level.`;
-                } else if (formScore >= 75) {
-                    repQuality = '✅ Good';
-                    detailMessage = `${encouragement} Solid form at ${formScore}%. ${mistake ? `Watch your ${mistake.toLowerCase()} to get to 90+%` : 'Push for 90% form!'}`;
-                } else if (formScore >= 60) {
-                    repQuality = '👍 Decent';
-                    detailMessage = `Rep counted at ${formScore}%. ${mistake ? `Focus on fixing: ${mistake}. ` : ''}Try to improve to 75%+ for better results.`;
-                } else {
-                    repQuality = '⚠️ Counted';
-                    detailMessage = `Rep counted but form was only ${formScore}%. ${mistake ? `Main issue: ${mistake}. ` : ''}Slow down and focus on quality over quantity.`;
-                }
-                
-                feedback = createEnhancedFeedback(
-                    repQuality,
-                    detailMessage,
-                    formScore >= 75 ? 'positive' : 'adjustment',
-                    [],
-                    0.95,
-                    formScore >= 75 ? 'low' : 'medium',
-                    'medium'
-                );
+            } else if (formScore >= 70) {
+                repMessage = `${encouragement} Good rep! ${formScore}% form. ${mistake ? `Small tip: work on ${mistake.toLowerCase()}.` : 'Solid work!'}`;
+                shouldSpeak = repCount % 3 === 0; // Speak every 3rd rep
+            } else if (formScore >= 45) {
+                repMessage = `Rep ${repCount + 1} counted. Form at ${formScore}%. ${mistake ? `Focus on: ${mistake}. ` : ''}You're building strength - form will improve!`;
+                feedbackType = 'adjustment';
+                shouldSpeak = repCount % 5 === 0; // Speak every 5th rep
             } else {
-                // Rep doesn't count - form too poor
-                shouldSpeak = true;
-                const progressiveHint = feedbackManager.getProgressiveHint(mistake || 'Poor Form', 1);
-                feedback = createEnhancedFeedback(
-                    `❌ Rep Not Counted`,
-                    `Form score was ${formScore}% (need 50%+). ${mistake ? `Main issue: ${mistake}. ` : ''}${progressiveHint} Take your time and focus on proper technique.`,
-                    'critical',
-                    feedback.problemLandmarks,
-                    0.85,
-                    biomechanicalRisk,
-                    'immediate'
-                );
+                repMessage = `Rep ${repCount + 1}. ${mistake ? `Watch ${mistake.toLowerCase()} - ` : ''}Quality is ${formScore}%. Slow down and focus on control. Progress takes time! 🎯`;
+                feedbackType = 'adjustment';
+                shouldSpeak = repCount === 0 || repCount % 5 === 0; // First rep and every 5th
             }
+            
+            feedback = createEnhancedFeedback(
+                `Rep ${repCount + 1} ✓`,
+                repMessage,
+                feedbackType,
+                [],
+                0.95,
+                formScore >= 75 ? 'low' : 'medium',
+                'medium'
+            );
         }
     }
     
@@ -1017,9 +1006,10 @@ const analyzePushup = (landmarks: Landmark[], currentStage: string, repCount: nu
     }
     
     // Detect bottom position - requires BOTH angle and movement
-    if (avgElbowAngle < 90 && currentStage === 'up') {
+    if (avgElbowAngle < 120 && currentStage === 'up') {
+        // Made more forgiving - even partial pushups count
         // Only transition if there was actual downward movement
-        if (physics.velocity > 0.1) {
+        if (physics.velocity > 0.05) { // More sensitive
             stage = 'down'; 
             shouldSpeak = false;
             feedback = createEnhancedFeedback(
@@ -1033,35 +1023,40 @@ const analyzePushup = (landmarks: Landmark[], currentStage: string, repCount: nu
             );
         }
     } else if (stage === 'up' && currentStage === 'down') {
-        // Rep completed - requires coming back up with movement
-        if (physics.velocity > 0.1) {
-            const ensembleScore = ensembleAnalysis({ feedback, stage, repCounted, mistake, formScore }, physics, biomechanics);
-            if (ensembleScore > 70) {
-                repCounted = true; 
+        // Rep completed - ALWAYS count it!
+        if (physics.velocity > 0.03) { // More sensitive
+            repCounted = true; // Count every rep!
+            
+            // Quality-based feedback (not blocking)
+            const encouragement = feedbackManager.getEncouragementMessage(repCount + 1);
+            let repMessage = '';
+            let feedbackType: 'positive' | 'adjustment' | 'info' = 'positive';
+            
+            if (formScore >= 85) {
+                repMessage = `${encouragement} Killer rep! ${formScore}% form. Your technique is excellent! 🔥`;
                 shouldSpeak = true;
-                const encouragement = feedbackManager.getEncouragementMessage(repCount + 1);
-                feedback = createEnhancedFeedback(
-                    '✅ Great Rep!',
-                    encouragement,
-                    'positive',
-                    [],
-                    0.95,
-                    'low',
-                    'medium'
-                );
+            } else if (formScore >= 70) {
+                repMessage = `${encouragement} Solid pushup at ${formScore}%. ${mistake ? `Tip: ${mistake.toLowerCase()}.` : 'Nice work!'}`;
+                shouldSpeak = repCount % 3 === 0;
+            } else if (formScore >= 45) {
+                repMessage = `Rep ${repCount + 1} done. ${formScore}% form. ${mistake ? `Work on: ${mistake}. ` : ''}Keep going - you're building strength!`;
+                feedbackType = 'adjustment';
+                shouldSpeak = repCount % 5 === 0;
             } else {
-                 shouldSpeak = true;
-                 const progressiveHint = feedbackManager.getProgressiveHint(mistake || 'Unknown', 1);
-                 feedback = createEnhancedFeedback(
-                    'Try Again 🔄',
-                    `That rep didn't count. ${progressiveHint}`,
-                    'warning',
-                    feedback.problemLandmarks,
-                    0.8,
-                    biomechanicalRisk,
-                    'immediate'
-                );
+                repMessage = `Rep ${repCount + 1}. ${mistake ? `${mistake} detected - ` : ''}${formScore}% quality. Focus on control. Every rep makes you stronger! 💪`;
+                feedbackType = 'adjustment';
+                shouldSpeak = repCount === 0 || repCount % 5 === 0;
             }
+            
+            feedback = createEnhancedFeedback(
+                `Rep ${repCount + 1} ✓`,
+                repMessage,
+                feedbackType,
+                [],
+                0.95,
+                formScore >= 75 ? 'low' : 'medium',
+                'medium'
+            );
         }
     }
     
@@ -1211,7 +1206,8 @@ const analyzeLunge = (landmarks: Landmark[], currentStage: string, repCount: num
         }
     }
 
-    if (frontKneeAngle < 100 && currentStage === 'up') {
+    if (frontKneeAngle < 120 && currentStage === 'up') {
+        // Made more forgiving for beginners
         stage = isLeftLegForward ? 'left_down' : 'right_down';
         shouldSpeak = false;
         feedback = createEnhancedFeedback(
@@ -1224,33 +1220,39 @@ const analyzeLunge = (landmarks: Landmark[], currentStage: string, repCount: num
             'low'
         );
     } else if (stage === 'up' && (currentStage === 'left_down' || currentStage === 'right_down')) {
-        const ensembleScore = ensembleAnalysis({ feedback, stage, repCounted, mistake, formScore }, physics, biomechanics);
-        if (ensembleScore > 70) {
-            repCounted = true; 
+        // Rep completed - ALWAYS count it!
+        repCounted = true;
+        
+        // Quality feedback (not blocking)
+        const encouragement = feedbackManager.getEncouragementMessage(repCount + 1);
+        let repMessage = '';
+        let feedbackType: 'positive' | 'adjustment' | 'info' = 'positive';
+        
+        if (formScore >= 85) {
+            repMessage = `${encouragement} Perfect lunge! ${formScore}% form. Excellent balance and control! 🎯`;
             shouldSpeak = true;
-            const encouragement = feedbackManager.getEncouragementMessage(repCount + 1);
-            feedback = createEnhancedFeedback(
-                '✅ Great Rep!',
-                encouragement,
-                'positive',
-                [],
-                0.95,
-                'low',
-                'medium'
-            );
+        } else if (formScore >= 70) {
+            repMessage = `${encouragement} Good lunge! ${formScore}% form. ${mistake ? `Note: ${mistake.toLowerCase()}.` : 'Great work!'}`;
+            shouldSpeak = repCount % 3 === 0;
+        } else if (formScore >= 45) {
+            repMessage = `Rep ${repCount + 1} complete. ${formScore}% form. ${mistake ? `Focus: ${mistake}. ` : ''}You're progressing!`;
+            feedbackType = 'adjustment';
+            shouldSpeak = repCount % 5 === 0;
         } else {
-            shouldSpeak = true;
-            const progressiveHint = feedbackManager.getProgressiveHint(mistake || 'Unknown', 1);
-            feedback = createEnhancedFeedback(
-                'Try Again 🔄',
-                `Let's work on that form. ${progressiveHint}`,
-                'warning',
-                feedback.problemLandmarks,
-                0.8,
-                biomechanicalRisk,
-                'immediate'
-            );
+            repMessage = `Rep ${repCount + 1}. ${mistake ? `${mistake} - ` : ''}${formScore}% quality. Take it slow and focus on stability. You've got this! 💪`;
+            feedbackType = 'adjustment';
+            shouldSpeak = repCount === 0 || repCount % 5 === 0;
         }
+        
+        feedback = createEnhancedFeedback(
+            `Rep ${repCount + 1} ✓`,
+            repMessage,
+            feedbackType,
+            [],
+            0.95,
+            formScore >= 75 ? 'low' : 'medium',
+            'medium'
+        );
     }
     
     previousLandmarks = landmarks;

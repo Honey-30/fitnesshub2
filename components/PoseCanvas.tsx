@@ -1,4 +1,3 @@
-import drawingUtils from '@mediapipe/drawing_utils';
 import mediaPipePose from '@mediapipe/pose';
 import { Activity, AlertTriangle, CameraOff, CheckCircle, Loader2, Shield, Timer, TrendingUp } from 'lucide-react';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
