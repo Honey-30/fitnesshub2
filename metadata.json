@@ -1,0 +1,7 @@
+{
+  "name": "AI Fitness Hub",
+  "description": "An AI-powered fitness platform that provides a personalized BMI, calorie, and macronutrient calculator, along with AI-generated tips to help users achieve their health goals.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
