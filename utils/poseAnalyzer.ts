@@ -668,8 +668,9 @@ const analyzeSquat = (landmarks: Landmark[], currentStage: string, repCount: num
     const isSquatting = avgKneeAngle < 170 || avgHipAngle < 170;
     const isStanding = avgKneeAngle >= 165 && avgHipAngle >= 165;
     
-    // If standing still and no movement detected
-    if (isStanding && physics.velocity < 0.05 && currentStage === 'up') {
+    // Only show "Ready to Start" if truly idle (no reps yet) AND not moving
+    // This prevents blocking the squat detection after first rep
+    if (isStanding && physics.velocity < 0.01 && currentStage === 'up' && repCount === 0) {
         return {
             feedback: createEnhancedFeedback(
                 'Ready to Start',
@@ -718,46 +719,46 @@ const analyzeSquat = (landmarks: Landmark[], currentStage: string, repCount: num
         const kneeStability = calculateStability(leftKnee, 25); // Left knee index
 
         if (torsoShinAngleDiff > 50) {
-            mistake = "Chest Falling"; formScore -= 40; 
-            biomechanicalRisk = 'high';
+            mistake = "Chest Falling"; formScore -= 8; // SUPER beginner-friendly
+            biomechanicalRisk = 'medium'; // Lowered from high
             shouldSpeak = true;
             feedback = createEnhancedFeedback(
                 'Chest Up! 📐',
-                'Your chest is dropping forward. Keep it proud and upright to protect your back.',
-                'critical',
+                'Try to keep your chest up a bit more. You\'re doing great!',
+                'adjustment', // Changed from critical
                 [11, 12, 23, 24],
                 0.9,
                 biomechanicalRisk,
-                'immediate'
+                'low' // Changed from immediate
             );
         } else if (leftKneeValgus || rightKneeValgus) { 
-            mistake = "Knee Valgus"; formScore -= 30;
-            biomechanicalRisk = 'high';
+            mistake = "Knee Valgus"; formScore -= 6; // SUPER beginner-friendly
+            biomechanicalRisk = 'medium'; // Lowered from high
             shouldSpeak = true;
             feedback = createEnhancedFeedback(
                 'Knees Out! ⚠️',
-                'Your knees are caving inward. Push them out to align with your toes - this protects your joints.',
-                'critical',
+                'Try pushing your knees out slightly. Good effort!',
+                'adjustment', // Changed from critical
                 [25, 26],
                 0.85,
                 biomechanicalRisk,
-                'immediate'
+                'low' // Changed from immediate
             );
         } else if (kneeStability < 60) {
-            mistake = "Unstable Knees"; formScore -= 25;
-            biomechanicalRisk = 'medium';
+            mistake = "Unstable Knees"; formScore -= 4; // SUPER beginner-friendly
+            biomechanicalRisk = 'low'; // Lowered from medium
             shouldSpeak = true;
             feedback = createEnhancedFeedback(
                 'Stabilize 🎯',
-                'Your knees are wobbling. Slow down and control the movement to build stability.',
+                'Little wobble there! Take your time and control the movement.',
                 'adjustment',
                 [25, 26],
                 0.75,
                 biomechanicalRisk,
-                'high'
+                'low' // Changed from high
             );
         } else if (leftHip.y > leftKnee.y + 0.03 && rightHip.y > rightKnee.y + 0.03) {
-            mistake = "Not Deep Enough"; formScore -= 20;
+            mistake = "Not Deep Enough"; formScore -= 3; // SUPER beginner-friendly
             shouldSpeak = false; // Don't spam this feedback
             feedback = createEnhancedFeedback(
                 'Go Deeper 📏',
@@ -800,12 +801,23 @@ const analyzeSquat = (landmarks: Landmark[], currentStage: string, repCount: num
         }
     }
 
-    // Detect squat bottom position - requires BOTH angle and movement
-    if (avgHipAngle < 120 && avgKneeAngle < 130 && currentStage === 'up') {
-        // Lowered threshold from 100 to allow partial squats to count
-        // Only transition if there was actual downward movement
-        if (physics.velocity > 0.05) { // Made more sensitive
-            stage = 'down'; 
+    // Debug logging for state transitions
+    console.log('🔍 Squat Detection:', {
+        stage: currentStage,
+        kneeAngle: avgKneeAngle.toFixed(1),
+        hipAngle: avgHipAngle.toFixed(1),
+        velocity: physics.velocity.toFixed(3),
+        formScore
+    });
+
+    // Detect squat bottom position - more realistic thresholds for professional form
+    // Professional parallel squat: knee ~85-95°, hip ~130-145° (NOT < 120!)
+    // Changed from AND to OR - only need ONE angle low enough
+    if ((avgHipAngle < 145 || avgKneeAngle < 140) && currentStage === 'up') {
+        // Lower velocity threshold for slow, controlled movements
+        if (physics.velocity > 0.01) {
+            stage = 'down';
+            console.log('✅ Transitioned to DOWN state');
             shouldSpeak = false;
             feedback = createEnhancedFeedback(
                 'Down... ⬇️',
@@ -817,11 +829,13 @@ const analyzeSquat = (landmarks: Landmark[], currentStage: string, repCount: num
                 'low'
             );
         }
-    } else if (stage === 'up' && currentStage === 'down') {
-        // Rep completed - coming back up
-        // BEGINNER-FRIENDLY: Count ALL reps, give feedback on quality separately
-        if (physics.velocity > 0.03) { // More sensitive to movement
-            repCounted = true; // Count the rep no matter what!
+    } 
+    // Detect coming back up - transition from down to up
+    else if (currentStage === 'down' && (avgKneeAngle >= 150 || avgHipAngle >= 155)) {
+        if (physics.velocity > 0.005) {
+            stage = 'up';
+            repCounted = true;
+            console.log('🎯 REP COUNTED! Form Score:', formScore, '| Rep #', repCount + 1);
             console.log('🎯 REP COUNTED! Form Score:', formScore, '| Rep #', repCount + 1);
             
             // NOW provide quality-based feedback (not blocking the count)
@@ -831,20 +845,21 @@ const analyzeSquat = (landmarks: Landmark[], currentStage: string, repCount: num
             let repMessage = '';
             let feedbackType: 'positive' | 'adjustment' | 'info' = 'positive';
             
-            if (formScore >= 85) {
+            // SUPER BEGINNER-FRIENDLY thresholds (was 85/70/45)
+            if (formScore >= 75) {
                 repMessage = `${encouragement} Outstanding rep! Form score: ${formScore}%. You're crushing it! 💪`;
                 shouldSpeak = true;
-            } else if (formScore >= 70) {
+            } else if (formScore >= 60) {
                 repMessage = `${encouragement} Good rep! ${formScore}% form. ${mistake ? `Small tip: work on ${mistake.toLowerCase()}.` : 'Solid work!'}`;
-                shouldSpeak = repCount % 3 === 0; // Speak every 3rd rep
-            } else if (formScore >= 45) {
+                shouldSpeak = repCount % 3 === 0;
+            } else if (formScore >= 47) {
                 repMessage = `Rep ${repCount + 1} counted. Form at ${formScore}%. ${mistake ? `Focus on: ${mistake}. ` : ''}You're building strength - form will improve!`;
                 feedbackType = 'adjustment';
-                shouldSpeak = repCount % 5 === 0; // Speak every 5th rep
+                shouldSpeak = repCount % 5 === 0;
             } else {
                 repMessage = `Rep ${repCount + 1}. ${mistake ? `Watch ${mistake.toLowerCase()} - ` : ''}Quality is ${formScore}%. Slow down and focus on control. Progress takes time! 🎯`;
                 feedbackType = 'adjustment';
-                shouldSpeak = repCount === 0 || repCount % 5 === 0; // First rep and every 5th
+                shouldSpeak = repCount === 0 || repCount % 5 === 0;
             }
             
             feedback = createEnhancedFeedback(
@@ -853,7 +868,7 @@ const analyzeSquat = (landmarks: Landmark[], currentStage: string, repCount: num
                 feedbackType,
                 [],
                 0.95,
-                formScore >= 75 ? 'low' : 'medium',
+                formScore >= 60 ? 'low' : 'medium', // Lowered from 75
                 'medium'
             );
         }
@@ -948,34 +963,34 @@ const analyzePushup = (landmarks: Landmark[], currentStage: string, repCount: nu
     const elbowFlare = Math.abs(leftElbow.x - leftShoulder.x) + Math.abs(rightElbow.x - rightShoulder.x);
     if (elbowFlare > 0.3) {
         mistake = "Elbows Flaring";
-        formScore -= 20;
-        biomechanicalRisk = 'medium';
+        formScore -= 6; // SUPER beginner-friendly (was 20)
+        biomechanicalRisk = 'low'; // Lowered from medium
         shouldSpeak = true;
         feedback = createEnhancedFeedback(
             'Tuck Elbows 💪',
-            'Keep your elbows closer to your body - about 45 degrees. This protects your shoulders from stress.',
+            'Try keeping your elbows a bit closer. You\'re doing great!',
             'adjustment',
             [13, 14],
             0.8,
             biomechanicalRisk,
-            'high'
+            'low' // Changed from high
         );
     }
 
     if (avgElbowAngle > 160) stage = 'up';
 
     if (avgBodyAngle < 160) {
-        mistake = "Hip Sag"; formScore -= 50; 
-        biomechanicalRisk = 'high';
+        mistake = "Hip Sag"; formScore -= 10; // SUPER beginner-friendly (was 50!)
+        biomechanicalRisk = 'medium'; // Lowered from high
         shouldSpeak = true;
         feedback = createEnhancedFeedback(
             'Engage Core! 🔥',
-            'Your hips are sagging. Squeeze your glutes and abs tight - imagine holding a perfect plank position!',
-            'critical',
+            'Try to keep your body a bit straighter. Engage your core!',
+            'adjustment', // Changed from critical
             [23, 24],
             0.9,
             biomechanicalRisk,
-            'immediate'
+            'low' // Changed from immediate
         );
     } else if (stage === 'down' || (avgElbowAngle < 160 && currentStage === 'up')) {
         if (avgElbowAngle < 90) {
@@ -991,11 +1006,11 @@ const analyzePushup = (landmarks: Landmark[], currentStage: string, repCount: nu
             );
         } else {
             if (mistake !== "Elbows Flaring" && mistake !== "Hip Sag") {
-                mistake = "Not Deep Enough"; formScore -= 25;
+                mistake = "Not Deep Enough"; formScore -= 5; // SUPER beginner-friendly (was 25)
                 shouldSpeak = false;
                 feedback = createEnhancedFeedback(
                     'Lower More 📏',
-                    'Good control! Try to lower your chest closer to the floor for full range of motion.',
+                    'Good effort! Try going a bit lower next time.',
                     'adjustment',
                     [11, 12],
                     0.75,
@@ -1005,13 +1020,19 @@ const analyzePushup = (landmarks: Landmark[], currentStage: string, repCount: nu
             }
         }
     }
-    
-    // Detect bottom position - requires BOTH angle and movement
-    if (avgElbowAngle < 120 && currentStage === 'up') {
-        // Made more forgiving - even partial pushups count
-        // Only transition if there was actual downward movement
-        if (physics.velocity > 0.05) { // More sensitive
-            stage = 'down'; 
+    // Debug logging
+    console.log('🔍 Pushup Detection:', {
+        stage: currentStage,
+        elbowAngle: avgElbowAngle.toFixed(1),
+        velocity: physics.velocity.toFixed(3),
+        formScore
+    });
+
+    // Detect bottom position - more realistic for professional form
+    if (avgElbowAngle < 130 && currentStage === 'up') {
+        if (physics.velocity > 0.01) {
+            stage = 'down';
+            console.log('✅ Pushup: Transitioned to DOWN');
             shouldSpeak = false;
             feedback = createEnhancedFeedback(
                 'Down... ⬇️',
@@ -1023,10 +1044,12 @@ const analyzePushup = (landmarks: Landmark[], currentStage: string, repCount: nu
                 'low'
             );
         }
-    } else if (stage === 'up' && currentStage === 'down') {
-        // Rep completed - ALWAYS count it!
-        if (physics.velocity > 0.03) { // More sensitive
-            repCounted = true; // Count every rep!
+    } 
+    // Detect coming back up
+    else if (currentStage === 'down' && avgElbowAngle >= 160) {
+        if (physics.velocity > 0.005) {
+            stage = 'up';
+            repCounted = true;
             console.log('💪 PUSHUP COUNTED! Form Score:', formScore, '| Rep #', repCount + 1);
             
             // Quality-based feedback (not blocking)
@@ -1034,13 +1057,14 @@ const analyzePushup = (landmarks: Landmark[], currentStage: string, repCount: nu
             let repMessage = '';
             let feedbackType: 'positive' | 'adjustment' | 'info' = 'positive';
             
-            if (formScore >= 85) {
+            // SUPER BEGINNER-FRIENDLY thresholds (was 85/70/45)
+            if (formScore >= 75) {
                 repMessage = `${encouragement} Killer rep! ${formScore}% form. Your technique is excellent! 🔥`;
                 shouldSpeak = true;
-            } else if (formScore >= 70) {
+            } else if (formScore >= 60) {
                 repMessage = `${encouragement} Solid pushup at ${formScore}%. ${mistake ? `Tip: ${mistake.toLowerCase()}.` : 'Nice work!'}`;
                 shouldSpeak = repCount % 3 === 0;
-            } else if (formScore >= 45) {
+            } else if (formScore >= 47) {
                 repMessage = `Rep ${repCount + 1} done. ${formScore}% form. ${mistake ? `Work on: ${mistake}. ` : ''}Keep going - you're building strength!`;
                 feedbackType = 'adjustment';
                 shouldSpeak = repCount % 5 === 0;
@@ -1056,7 +1080,7 @@ const analyzePushup = (landmarks: Landmark[], currentStage: string, repCount: nu
                 feedbackType,
                 [],
                 0.95,
-                formScore >= 75 ? 'low' : 'medium',
+                formScore >= 60 ? 'low' : 'medium', // Lowered from 75
                 'medium'
             );
         }
@@ -1155,44 +1179,44 @@ const analyzeLunge = (landmarks: Landmark[], currentStage: string, repCount: num
         stage = 'up';
     } else {
         if (frontKnee.x < frontAnkle.x) {
-            mistake = "Knee Over Toes"; formScore -= 40; 
-            biomechanicalRisk = 'high';
+            mistake = "Knee Over Toes"; formScore -= 7; // SUPER beginner-friendly (was 40!)
+            biomechanicalRisk = 'medium'; // Lowered from high
             shouldSpeak = true;
             feedback = createEnhancedFeedback(
                 'Knee Back! ⚠️',
-                'Your knee is going past your toes. Shift your weight back to protect your knee joint.',
-                'critical',
+                'Try shifting your weight back a bit. You\'re doing well!',
+                'adjustment', // Changed from critical
                 [isLeftLegForward ? 25 : 26],
                 0.9,
                 biomechanicalRisk,
-                'immediate'
+                'low' // Changed from immediate
             );
         } else if (frontKneeAngle < 80 || frontKneeAngle > 100) {
-            mistake = "Incorrect Depth"; formScore -= 30; 
-            biomechanicalRisk = 'medium';
+            mistake = "Incorrect Depth"; formScore -= 5; // SUPER beginner-friendly (was 30)
+            biomechanicalRisk = 'low'; // Lowered from medium
             shouldSpeak = true;
             feedback = createEnhancedFeedback(
                 'Check Depth 📐',
-                'Aim for a 90-degree angle in both knees for optimal form and muscle activation.',
+                'Try to aim for a 90-degree angle. Great effort!',
                 'adjustment',
                 [isLeftLegForward ? 25 : 26],
                 0.75,
                 biomechanicalRisk,
-                'high'
+                'low' // Changed from high
             );
         } else if (biomechanics.balanceScore < 60) {
             mistake = "Poor Balance";
-            formScore -= 20;
-            biomechanicalRisk = 'medium';
+            formScore -= 4; // SUPER beginner-friendly (was 20)
+            biomechanicalRisk = 'low'; // Lowered from medium
             shouldSpeak = true;
             feedback = createEnhancedFeedback(
                 'Balance 🎯',
-                'Focus on maintaining your balance. Engage your core and keep your torso upright.',
+                'Keep working on your balance. Engage your core!',
                 'adjustment',
                 [23, 24],
                 0.7,
                 biomechanicalRisk,
-                'high'
+                'low' // Changed from high
             );
         } else {
             shouldSpeak = false;
@@ -1208,54 +1232,68 @@ const analyzeLunge = (landmarks: Landmark[], currentStage: string, repCount: num
         }
     }
 
-    if (frontKneeAngle < 120 && currentStage === 'up') {
-        // Made more forgiving for beginners
-        stage = isLeftLegForward ? 'left_down' : 'right_down';
-        shouldSpeak = false;
-        feedback = createEnhancedFeedback(
-            'Down... ⬇️',
-            'Descending',
-            'info',
-            [],
-            1.0,
-            'low',
-            'low'
-        );
-    } else if (stage === 'up' && (currentStage === 'left_down' || currentStage === 'right_down')) {
-        // Rep completed - ALWAYS count it!
-        repCounted = true;
-        console.log('🦵 LUNGE COUNTED! Form Score:', formScore, '| Rep #', repCount + 1);
-        
-        // Quality feedback (not blocking)
-        const encouragement = feedbackManager.getEncouragementMessage(repCount + 1);
-        let repMessage = '';
-        let feedbackType: 'positive' | 'adjustment' | 'info' = 'positive';
-        
-        if (formScore >= 85) {
-            repMessage = `${encouragement} Perfect lunge! ${formScore}% form. Excellent balance and control! 🎯`;
-            shouldSpeak = true;
-        } else if (formScore >= 70) {
-            repMessage = `${encouragement} Good lunge! ${formScore}% form. ${mistake ? `Note: ${mistake.toLowerCase()}.` : 'Great work!'}`;
-            shouldSpeak = repCount % 3 === 0;
-        } else if (formScore >= 45) {
-            repMessage = `Rep ${repCount + 1} complete. ${formScore}% form. ${mistake ? `Focus: ${mistake}. ` : ''}You're progressing!`;
-            feedbackType = 'adjustment';
-            shouldSpeak = repCount % 5 === 0;
-        } else {
-            repMessage = `Rep ${repCount + 1}. ${mistake ? `${mistake} - ` : ''}${formScore}% quality. Take it slow and focus on stability. You've got this! 💪`;
-            feedbackType = 'adjustment';
-            shouldSpeak = repCount === 0 || repCount % 5 === 0;
+    // Debug logging
+    console.log('🔍 Lunge Detection:', {
+        stage: currentStage,
+        frontKnee: frontKneeAngle.toFixed(1),
+        velocity: physics.velocity.toFixed(3),
+        formScore
+    });
+
+    if (frontKneeAngle < 140 && currentStage === 'up') {
+        if (physics.velocity > 0.01) {
+            stage = isLeftLegForward ? 'left_down' : 'right_down';
+            console.log('✅ Lunge: Transitioned to DOWN');
+            shouldSpeak = false;
+            feedback = createEnhancedFeedback(
+                'Down... ⬇️',
+                'Descending',
+                'info',
+                [],
+                1.0,
+                'low',
+                'low'
+            );
         }
-        
-        feedback = createEnhancedFeedback(
-            `Rep ${repCount + 1} ✓`,
-            repMessage,
-            feedbackType,
-            [],
-            0.95,
-            formScore >= 75 ? 'low' : 'medium',
-            'medium'
-        );
+    } 
+    else if ((currentStage === 'left_down' || currentStage === 'right_down') && frontKneeAngle >= 160) {
+        if (physics.velocity > 0.005) {
+            stage = 'up';
+            repCounted = true;
+            console.log('🦵 LUNGE COUNTED! Form Score:', formScore, '| Rep #', repCount + 1);
+            
+            // Quality feedback (not blocking)
+            const encouragement = feedbackManager.getEncouragementMessage(repCount + 1);
+            let repMessage = '';
+            let feedbackType: 'positive' | 'adjustment' | 'info' = 'positive';
+            
+            // SUPER BEGINNER-FRIENDLY thresholds (was 85/70/45)
+            if (formScore >= 75) {
+                repMessage = `${encouragement} Perfect lunge! ${formScore}% form. Excellent balance and control! 🎯`;
+                shouldSpeak = true;
+            } else if (formScore >= 60) {
+                repMessage = `${encouragement} Good lunge! ${formScore}% form. ${mistake ? `Note: ${mistake.toLowerCase()}.` : 'Great work!'}`;
+                shouldSpeak = repCount % 3 === 0;
+            } else if (formScore >= 47) {
+                repMessage = `Rep ${repCount + 1} complete. ${formScore}% form. ${mistake ? `Focus: ${mistake}. ` : ''}You're progressing!`;
+                feedbackType = 'adjustment';
+                shouldSpeak = repCount % 5 === 0;
+            } else {
+                repMessage = `Rep ${repCount + 1}. ${mistake ? `${mistake} - ` : ''}${formScore}% quality. Take it slow and focus on stability. You've got this! 💪`;
+                feedbackType = 'adjustment';
+                shouldSpeak = repCount === 0 || repCount % 5 === 0;
+            }
+            
+            feedback = createEnhancedFeedback(
+                `Rep ${repCount + 1} ✓`,
+                repMessage,
+                feedbackType,
+                [],
+                0.95,
+                formScore >= 60 ? 'low' : 'medium', // Lowered from 75
+                'medium'
+            );
+        }
     }
     
     previousLandmarks = landmarks;
