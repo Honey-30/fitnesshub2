@@ -29,7 +29,7 @@ A comprehensive AI-powered fitness application with real-time pose detection, nu
 - **Premium animations** for engaging user experience
 
 ### 🏃 Workout Library
-- **10+ exercises** including Push-ups, Squats, Planks, Lunges, and more
+- **4 exercises** including Push-ups, Squats, Planks, Lunges, and more
 - **AI coaching** with real-time form corrections
 - **Exercise cards** with difficulty levels and muscle group targeting
 - **Premium UI** with subtle animations and glass-morphism design
